@@ -18,6 +18,12 @@ const (
 	maxSessionACLCache  = 256
 )
 
+// ErrRequestHookMore (b10d) lets a UDP RequestHook request further datagrams of
+// the same session for inspection (Pass/More/Drop): RequestHook.UDP returns nil
+// = done (proxy normally), ErrRequestHookMore = keep feeding datagrams to the
+// hook, any other error = abort the session.
+var ErrRequestHookMore = errors.New("request hook: inspect more datagrams")
+
 type udpIO interface {
 	ReceiveMessage() (*protocol.UDPMessage, error)
 	SendMessage([]byte, *protocol.UDPMessage) error
@@ -45,6 +51,10 @@ type udpSessionEntry struct {
 	conn     UDPConn
 	connLock sync.Mutex
 	closed   bool
+
+	// hookInspect (b10d): the RequestHook asked to inspect further datagrams of
+	// this session (it returned ErrRequestHookMore on a prior datagram).
+	hookInspect bool
 
 	aclCache map[string]error
 }
@@ -107,6 +117,20 @@ func (e *udpSessionEntry) Feed(msg *protocol.UDPMessage) (int, error) {
 		}
 		if e.OverrideAddr == "" {
 			e.aclCache = map[string]error{dfMsg.Addr: nil}
+		}
+	} else if e.hookInspect {
+		// b10d: feed subsequent datagrams to the hook until it returns Pass
+		// (nil) or Drop. A throwaway addr copy is used — subsequent-datagram
+		// inspection does not rewrite the target.
+		hookAddr := dfMsg.Addr
+		switch err := e.IO.Hook(dfMsg.Data, &hookAddr); err {
+		case nil:
+			e.hookInspect = false // Pass: done inspecting
+		case ErrRequestHookMore:
+			// keep inspecting subsequent datagrams
+		default:
+			e.CloseWithErr(err) // Drop: abort the session
+			return 0, err
 		}
 	}
 
@@ -316,7 +340,11 @@ func (m *udpSessionManager) feed(msg *protocol.UDPMessage) {
 		dialFunc := func(addr string, firstMsgData []byte) (conn UDPConn, actualAddr string, err error) {
 			// Call the hook
 			err = m.io.Hook(firstMsgData, &addr)
-			if err != nil {
+			if err == ErrRequestHookMore {
+				// b10d: hook wants to keep inspecting this session's datagrams.
+				entry.hookInspect = true
+				err = nil
+			} else if err != nil {
 				return conn, actualAddr, err
 			}
 			actualAddr = addr
