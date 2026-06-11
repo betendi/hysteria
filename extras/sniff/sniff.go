@@ -88,7 +88,7 @@ func (h *Sniffer) Check(isUDP bool, reqAddr string) bool {
 	}
 }
 
-func (h *Sniffer) TCP(stream server.HyStream, reqAddr *string) ([]byte, error) {
+func (h *Sniffer) TCP(_ string, stream server.HyStream, reqAddr *string) ([]byte, error) {
 	var err error
 	if h.Timeout == 0 {
 		err = stream.SetReadDeadline(time.Now().Add(sniffDefaultTimeout))
@@ -156,7 +156,7 @@ func (h *Sniffer) TCP(stream server.HyStream, reqAddr *string) ([]byte, error) {
 	}
 }
 
-func (h *Sniffer) UDP(data []byte, reqAddr *string) error {
+func (h *Sniffer) UDP(_ string, data []byte, reqAddr *string) error {
 	pl, err := quicInternal.ReadCryptoPayload(data)
 	if err != nil || len(pl) < 4 || pl[0] != 0x01 {
 		// Unrecognized protocol, incomplete payload or not a client hello

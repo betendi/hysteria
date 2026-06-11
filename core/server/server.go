@@ -279,7 +279,7 @@ func (h *h3sHandler) handleTCPRequest(stream *utils.QStream) {
 		if hooked {
 			streamStats.State.Store(StreamStateHooking)
 			_ = protocol.WriteTCPResponse(stream, true, "RequestHook enabled")
-			putback, err = h.config.RequestHook.TCP(stream, &reqAddr)
+			putback, err = h.config.RequestHook.TCP(h.authID, stream, &reqAddr)
 			if err != nil {
 				_ = stream.Close()
 				return
@@ -405,7 +405,7 @@ func (io *udpIOImpl) SendMessage(buf []byte, msg *protocol.UDPMessage) error {
 
 func (io *udpIOImpl) Hook(data []byte, reqAddr *string) error {
 	if io.RequestHook != nil && io.RequestHook.Check(true, *reqAddr) {
-		return io.RequestHook.UDP(data, reqAddr)
+		return io.RequestHook.UDP(io.AuthID, data, reqAddr)
 	} else {
 		return nil
 	}

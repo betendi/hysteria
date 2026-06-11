@@ -150,10 +150,13 @@ type CongestionConfig struct {
 // Return a non-nil error to abort the connection.
 // Note that due to the current architectural limitations, it can only inspect the first packet
 // of a UDP connection. It also cannot put back any data as the first packet is always sent as-is.
+//
+// b10d: TCP/UDP also receive the authenticated id (authID) so a hook can
+// attribute a verdict to the peer (e.g. the P2P penalty ladder in hsd).
 type RequestHook interface {
 	Check(isUDP bool, reqAddr string) bool
-	TCP(stream HyStream, reqAddr *string) ([]byte, error)
-	UDP(data []byte, reqAddr *string) error
+	TCP(authID string, stream HyStream, reqAddr *string) ([]byte, error)
+	UDP(authID string, data []byte, reqAddr *string) error
 }
 
 // Outbound provides the implementation of how the server should connect to remote servers.
